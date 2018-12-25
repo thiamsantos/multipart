@@ -1,35 +1,10 @@
 defmodule Multipart do
-  defmodule FormData do
-    keys = [:boundary, :parts]
-    @enforce_keys keys
-    defstruct keys
+  alias Multipart.{FilePart, ValuePart, FormData, PartEncoder}
 
-    @type t :: %__MODULE__{
-            boundary: String.t(),
-            parts: [Multipart.FilePart.t() | Multipart.ValuePart.t()]
-          }
-  end
+  @random_adapter Application.fetch_env!(:multipart, :random_adapter)
 
-  defmodule FilePart do
-    keys = [:name, :value, :filename, :content_type]
-    @enforce_keys keys
-    defstruct keys
-
-    @type t :: %__MODULE__{
-            name: String.t(),
-            value: String.t(),
-            filename: String.t(),
-            content_type: String.t()
-          }
-  end
-
-  defmodule ValuePart do
-    keys = [:name, :value]
-    @enforce_keys keys
-    defstruct keys
-
-    @type t :: %__MODULE__{name: String.t(), value: String.t()}
-  end
+  @spec random_boundary :: String.t()
+  defdelegate random_boundary, to: @random_adapter
 
   @spec new_form(String.t()) :: FormData.t()
   def new_form(boundary \\ random_boundary()) when is_binary(boundary) do
@@ -72,31 +47,10 @@ defmodule Multipart do
   def encode_form(%FormData{parts: parts, boundary: boundary}) do
     parts
     |> Enum.reverse()
-    |> Enum.map(&encode_part/1)
+    |> Enum.map(&PartEncoder.encode/1)
     |> Enum.join(boundary <> "\r\n")
     |> prepend(boundary <> "\r\n")
     |> append(boundary <> "--")
-  end
-
-  defp encode_part(%FilePart{} = file_part) do
-    %FilePart{name: name, value: value, filename: filename, content_type: content_type} =
-      file_part
-
-    "Content-Disposition: form-data; name=\"#{name}\"; filename=\"#{filename}\"\r\n" <>
-      "Content-Type: #{content_type}\r\n" <> "\r\n" <> "#{value}\r\n"
-  end
-
-  defp encode_part(%ValuePart{} = value_part) do
-    %ValuePart{name: name, value: value} = value_part
-
-    "Content-Disposition: form-data; name=\"#{name}\"\r\n" <> "\r\n" <> "#{value}\r\n"
-  end
-
-  @spec random_boundary :: String.t()
-  def random_boundary do
-    :crypto.strong_rand_bytes(16)
-    |> Base.encode16()
-    |> prepend("-----------------------------")
   end
 
   defp append(acc, value) do
